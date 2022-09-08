@@ -26,6 +26,7 @@ var (
 	queueCapFlag        = flag.Int("queuecap", 100, "Maximum transactions waiting to be sent")
 	versionFlag         = flag.Bool("version", false, "Print version number")
 	reCaptchaSecretFlag = flag.String("recaptcha.secret", "", "Google reCaptcha secret key")
+	reCaptchaHostFlag   = flag.String("recaptcha.host", "localhost", "Google reCaptcha hostname")
 
 	payoutFlag   = flag.Int("faucet.amount", 1, "Number of WSHIBs to transfer per user request")
 	intervalFlag = flag.Int("faucet.minutes", 1440, "Number of minutes to wait between funding rounds")
@@ -60,7 +61,7 @@ func Execute() {
 	if err != nil {
 		panic(fmt.Errorf("cannot connect to web3 provider: %w", err))
 	}
-	config := server.NewConfig(*netnameFlag, *httpPortFlag, *intervalFlag, *payoutFlag, *proxyCntFlag, *queueCapFlag, *dbFlag, *reCaptchaSecretFlag)
+	config := server.NewConfig(*netnameFlag, *httpPortFlag, *intervalFlag, *payoutFlag, *proxyCntFlag, *queueCapFlag, *dbFlag, *reCaptchaSecretFlag, *reCaptchaHostFlag)
 	go server.NewServer(txBuilder, config).Run()
 
 	c := make(chan os.Signal, 1)

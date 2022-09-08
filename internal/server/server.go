@@ -255,7 +255,7 @@ func (s *Server) verifyReCaptcha(ctx context.Context, reCaptchaToken string) (er
 	defer verifyCaptchaResponse.Body.Close()
 
 	log.WithField("reCaptcha_response", captchaVerifyResponse).Info("verify reCaptcha response")
-	if !captchaVerifyResponse.Success {
+	if !captchaVerifyResponse.Success || captchaVerifyResponse.HostName != s.cfg.reCaptchaHost {
 		return "Invalid reCAPTCHA. Please try again.", http.StatusBadRequest
 	}
 

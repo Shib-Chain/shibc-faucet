@@ -9,9 +9,10 @@ type Config struct {
 	queueCap        int
 	dns             string
 	reCaptchaSecret string
+	reCaptchaHost   string
 }
 
-func NewConfig(network string, httpPort, interval, payout, proxyCount, queueCap int, dns, reCaptchaSecret string) *Config {
+func NewConfig(network string, httpPort, interval, payout, proxyCount, queueCap int, dns, reCaptchaSecret, reCaptchaHost string) *Config {
 	return &Config{
 		network:         network,
 		httpPort:        httpPort,
@@ -21,5 +22,6 @@ func NewConfig(network string, httpPort, interval, payout, proxyCount, queueCap 
 		queueCap:        queueCap,
 		dns:             dns,
 		reCaptchaSecret: reCaptchaSecret,
+		reCaptchaHost:   reCaptchaHost,
 	}
 }
