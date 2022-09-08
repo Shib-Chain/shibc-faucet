@@ -263,7 +263,7 @@ func (s *Server) verifyReCaptcha(ctx context.Context, reCaptchaToken string) (er
 }
 
 func (s *Server) claim(ctx context.Context, requester *Requester) (common.Hash, error) {
-	txHash, err := s.Transfer(context.Background(), requester.Addr, chain.EtherToWei(int64(s.cfg.payout)))
+	txHash, err := s.Transfer(context.Background(), requester.Addr, chain.EtherToWei(s.cfg.payout))
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -282,9 +282,9 @@ func (s *Server) claim(ctx context.Context, requester *Requester) (common.Hash, 
 
 func (s *Server) handleInfo() http.HandlerFunc {
 	type info struct {
-		Account string `json:"account"`
-		Network string `json:"network"`
-		Payout  string `json:"payout"`
+		Account string  `json:"account"`
+		Network string  `json:"network"`
+		Payout  float64 `json:"payout"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
@@ -296,7 +296,7 @@ func (s *Server) handleInfo() http.HandlerFunc {
 		json.NewEncoder(w).Encode(info{
 			Account: s.Sender().String(),
 			Network: s.cfg.network,
-			Payout:  strconv.Itoa(s.cfg.payout),
+			Payout:  s.cfg.payout,
 		})
 	}
 }

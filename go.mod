@@ -10,6 +10,7 @@ require (
 	github.com/jellydator/ttlcache/v2 v2.11.1
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/lib/pq v1.2.0
+	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/urfave/negroni v1.0.0
 )

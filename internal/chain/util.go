@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/shopspring/decimal"
 )
 
 func IsValidAddress(address string, checksummed bool) bool {
@@ -13,7 +14,11 @@ func IsValidAddress(address string, checksummed bool) bool {
 	return !checksummed || common.HexToAddress(address).Hex() == address
 }
 
-func EtherToWei(amount int64) *big.Int {
-	ether := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
-	return new(big.Int).Mul(big.NewInt(amount), ether)
+func EtherToWei(amount float64) *big.Int {
+	mul := decimal.NewFromFloat(float64(10)).Pow(decimal.NewFromFloat(float64(18)))
+	result := decimal.NewFromFloat(amount).Mul(mul)
+
+	wei := new(big.Int)
+	wei.SetString(result.String(), 10)
+	return wei
 }
