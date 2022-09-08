@@ -133,7 +133,7 @@ func (s *Server) handleClaim() http.HandlerFunc {
 		address := r.PostFormValue(AddressKey)
 		inputIP := r.PostFormValue(IPKey)
 		ip := fmt.Sprint(r.Context().Value(IPCtxKey))
-		if inputIP != "" && inputIP != "::1" && inputIP != ip {
+		if inputIP != "" && ip != "::1" && inputIP != ip {
 			log.WithFields(log.Fields{
 				"addr":     address,
 				"ip":       ip,
