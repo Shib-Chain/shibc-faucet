@@ -10,7 +10,7 @@
     payout: 1,
   };
 
-  $: document.title = `ETH ${capitalize(faucetInfo.network)} Faucet`;
+  $: document.title = `WSHIBC ${capitalize(faucetInfo.network)} Faucet`;
 
   onMount(async () => {
     const res = await fetch('/api/info');
@@ -60,23 +60,8 @@
               <span class="icon">
                 <i class="fa fa-bath" />
               </span>
-              <span><b>ETH Faucet</b></span>
+              <span><b>WSHIBC Faucet</b></span>
             </a>
-          </div>
-          <div id="navbarMenu" class="navbar-menu">
-            <div class="navbar-end">
-              <span class="navbar-item">
-                <a
-                  class="button is-white is-outlined"
-                  href="https://github.com/chainflag/eth-faucet"
-                >
-                  <span class="icon">
-                    <i class="fa fa-github" />
-                  </span>
-                  <span>View Source</span>
-                </a>
-              </span>
-            </div>
           </div>
         </div>
       </nav>
@@ -86,7 +71,7 @@
       <div class="container has-text-centered">
         <div class="column is-6 is-offset-3">
           <h1 class="title">
-            Receive {faucetInfo.payout} ETH per request
+            Receive {faucetInfo.payout} WSHIBC per request
           </h1>
           <h2 class="subtitle">
             Serving from {faucetInfo.account}

@@ -20,14 +20,14 @@ RUN go mod download
 COPY . .
 COPY --from=frontend /frontend-build/dist ./web/dist
 
-RUN go build -o eth-faucet -ldflags "-s -w"
+RUN go build -o shibc-faucet -ldflags "-s -w"
 
 FROM alpine
 
 RUN apk add --no-cache ca-certificates
 
-COPY --from=backend /backend-build/eth-faucet /app/eth-faucet
+COPY --from=backend /backend-build/shibc-faucet /app/shibc-faucet
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/eth-faucet"]
+ENTRYPOINT ["/app/shibc-faucet"]

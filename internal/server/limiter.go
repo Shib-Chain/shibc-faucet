@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,8 +13,12 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
-	"github.com/chainflag/eth-faucet/internal/chain"
+	"github.com/Shib-Chain/shibc-faucet/internal/chain"
 )
+
+type IP string
+
+const IPCtxKey IP = "requester-ip"
 
 type Limiter struct {
 	mutex      sync.Mutex
@@ -38,12 +43,16 @@ func (l *Limiter) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.Ha
 		http.Error(w, "invalid address", http.StatusBadRequest)
 		return
 	}
+
+	clintIP := getClientIPFromRequest(l.proxyCount, r)
+	newCtx := context.WithValue(r.Context(), IPCtxKey, clintIP)
+	r = r.WithContext(newCtx)
+
 	if l.ttl <= 0 {
 		next.ServeHTTP(w, r)
 		return
 	}
 
-	clintIP := getClientIPFromRequest(l.proxyCount, r)
 	l.mutex.Lock()
 	if l.limitByKey(w, address) || l.limitByKey(w, clintIP) {
 		l.mutex.Unlock()
@@ -54,7 +63,7 @@ func (l *Limiter) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.Ha
 	l.mutex.Unlock()
 
 	next.ServeHTTP(w, r)
-	if w.(negroni.ResponseWriter).Status() != http.StatusOK {
+	if w.(negroni.ResponseWriter).Status() >= http.StatusInternalServerError {
 		l.cache.Remove(address)
 		l.cache.Remove(clintIP)
 		return
@@ -75,23 +84,22 @@ func (l *Limiter) limitByKey(w http.ResponseWriter, key string) bool {
 }
 
 func getClientIPFromRequest(proxyCount int, r *http.Request) string {
-	if proxyCount > 0 {
-		xForwardedFor := r.Header.Get("X-Forwarded-For")
-		xRealIP := r.Header.Get("X-Real-Ip")
+	xForwardedFor := r.Header.Get("X-Forwarded-For")
 
-		if xForwardedFor != "" {
-			xForwardedForParts := strings.Split(xForwardedFor, ",")
-			// Avoid reading the user's forged request header by configuring the count of reverse proxies
-			partIndex := len(xForwardedForParts) - proxyCount
-			if partIndex < 0 {
-				partIndex = 0
-			}
-			return strings.TrimSpace(xForwardedForParts[partIndex])
-		}
+	if xForwardedFor != "" {
+		xForwardedForParts := strings.Split(xForwardedFor, ",")
+		// // Avoid reading the user's forged request header by configuring the count of reverse proxies
+		// partIndex := len(xForwardedForParts) - proxyCount
+		// if partIndex < 0 {
+		// 	partIndex = 0
+		// }
+		// return strings.TrimSpace(xForwardedForParts[partIndex])
+		return strings.TrimSpace(xForwardedForParts[0])
+	}
 
-		if xRealIP != "" {
-			return strings.TrimSpace(xRealIP)
-		}
+	xRealIP := r.Header.Get("X-Real-Ip")
+	if xRealIP != "" {
+		return strings.TrimSpace(xRealIP)
 	}
 
 	remoteIP, _, err := net.SplitHostPort(r.RemoteAddr)

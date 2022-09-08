@@ -1,5 +1,5 @@
 {
-  "name": "eth-faucet",
+  "name": "shibc-faucet",
   "private": true,
   "version": "1.1.0",
   "type": "module",

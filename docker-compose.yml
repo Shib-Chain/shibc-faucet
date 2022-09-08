@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:14
+    container_name: shibc-faucet-db
+    restart: unless-stopped
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: shibc
+      POSTGRES_PASSWORD: shibc
+      POSTGRES_DB: shibc_faucet
+
+volumes:
+  pgdata:
+    driver: local

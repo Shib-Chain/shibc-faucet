@@ -5,31 +5,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/LK4D4/trylock"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/negroni"
 
-	"github.com/chainflag/eth-faucet/internal/chain"
-	"github.com/chainflag/eth-faucet/web"
+	"github.com/Shib-Chain/shibc-faucet/internal/chain"
+	"github.com/Shib-Chain/shibc-faucet/web"
 )
 
-const AddressKey string = "address"
+const (
+	AddressKey     string = "address"
+	IPKey          string = "ip"
+	ReCaptchaToken string = "token"
+)
 
 type Server struct {
 	chain.TxBuilder
-	mutex trylock.Mutex
-	cfg   *Config
-	queue chan string
+	mutex   trylock.Mutex
+	cfg     *Config
+	queue   chan Requester
+	storage *Storage
 }
 
 func NewServer(builder chain.TxBuilder, cfg *Config) *Server {
 	return &Server{
 		TxBuilder: builder,
 		cfg:       cfg,
-		queue:     make(chan string, cfg.queueCap),
+		queue:     make(chan Requester, cfg.queueCap),
 	}
 }
 
@@ -43,7 +52,43 @@ func (s *Server) setupRouter() *http.ServeMux {
 	return router
 }
 
+func (s *Server) initStorage() {
+	log.Info("database: connecting to %s", s.cfg.dns)
+	db, err := sqlx.Connect("postgres", s.cfg.dns)
+	if err != nil {
+		panic(fmt.Errorf("databse: connect db: %v", err))
+	}
+
+	err = db.Ping()
+	if err != nil {
+		panic(fmt.Errorf("datbase: cannot connect: %v", err))
+	}
+	log.Info("database: Successfully connected!")
+
+	s.migrateDB(db)
+	log.Info("database: Migration done!")
+
+	s.storage = NewStorage(db)
+}
+
+func (s *Server) migrateDB(db *sqlx.DB) {
+	cmdTable := `
+		CREATE TABLE IF NOT EXISTS requesters (
+			addr VARCHAR(255) PRIMARY KEY,
+			ip VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+	 	);
+	`
+	_, err := db.ExecContext(context.Background(), cmdTable)
+	if err != nil {
+		panic(fmt.Errorf("migration database failed: %w", err))
+	}
+}
+
 func (s *Server) Run() {
+	// init storage
+	s.initStorage()
+
 	go func() {
 		ticker := time.NewTicker(time.Second)
 		for range ticker.C {
@@ -65,14 +110,14 @@ func (s *Server) consumeQueue() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	for len(s.queue) != 0 {
-		address := <-s.queue
-		txHash, err := s.Transfer(context.Background(), address, chain.EtherToWei(int64(s.cfg.payout)))
+		requester := <-s.queue
+		txHash, err := s.claim(context.Background(), &requester)
 		if err != nil {
 			log.WithError(err).Error("Failed to handle transaction in the queue")
 		} else {
 			log.WithFields(log.Fields{
 				"txHash":  txHash,
-				"address": address,
+				"address": requester.Addr,
 			}).Info("Consume from queue successfully")
 		}
 	}
@@ -86,28 +131,79 @@ func (s *Server) handleClaim() http.HandlerFunc {
 		}
 
 		address := r.PostFormValue(AddressKey)
-		// Try to lock mutex if the work queue is empty
-		if len(s.queue) != 0 || !s.mutex.TryLock() {
-			select {
-			case s.queue <- address:
-				log.WithFields(log.Fields{
-					"address": address,
-				}).Info("Added to queue successfully")
-				fmt.Fprintf(w, "Added %s to the queue", address)
-			default:
-				log.Warn("Max queue capacity reached")
-				errMsg := "Faucet queue is too long, please try again later"
-				http.Error(w, errMsg, http.StatusServiceUnavailable)
-			}
+		inputIP := r.PostFormValue(IPKey)
+		ip := fmt.Sprint(r.Context().Value(IPCtxKey))
+		if inputIP != "" && inputIP != "::1" && inputIP != ip {
+			log.WithFields(log.Fields{
+				"addr":     address,
+				"ip":       ip,
+				"input_ip": inputIP,
+			}).Error("Detect different between request's IP and payload's IP")
+			errMsg := "System error, please try again later"
+			http.Error(w, errMsg, http.StatusServiceUnavailable)
 			return
 		}
 
+		if s.cfg.reCaptchaSecret != "" {
+			reCaptchaToken := r.PostFormValue(ReCaptchaToken)
+			if errMsg, httpStatus := s.verifyReCaptcha(r.Context(), reCaptchaToken); errMsg != "" {
+				log.WithFields(log.Fields{
+					"addr":  address,
+					"ip":    ip,
+					"token": reCaptchaToken,
+				}).Error(errMsg)
+				http.Error(w, errMsg, httpStatus)
+				return
+			}
+		}
+
+		requester, err := s.storage.GetRequester(r.Context(), RequesterFilter{Addr: address, IP: ip})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"addr": address,
+				"ip":   ip,
+			}).WithError(err).Error("Failed to get requester from storage")
+			errMsg := "System error, please try again later"
+			http.Error(w, errMsg, http.StatusServiceUnavailable)
+			return
+		}
+		if requester != nil {
+			errMsg := fmt.Sprintf("Account:%s already claimed", address)
+			http.Error(w, errMsg, http.StatusBadRequest)
+			return
+		}
+
+		newReq := Requester{
+			Addr: address,
+			IP:   ip,
+		}
+
+		// Try to lock mutex if the work queue is empty
+		// if len(s.queue) != 0 || !s.mutex.TryLock() {
+		// 	select {
+		// 	case s.queue <- newReq:
+		// 		log.WithFields(log.Fields{
+		// 			"address": address,
+		// 			"ip":      ip,
+		// 		}).Info("Added to queue successfully")
+		// 		fmt.Fprintf(w, "Added %s to the queue", address)
+		// 	default:
+		// 		log.Warn("Max queue capacity reached")
+		// 		errMsg := "Faucet queue is too long, please try again later"
+		// 		http.Error(w, errMsg, http.StatusServiceUnavailable)
+		// 	}
+		// 	return
+		// }
+
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-		txHash, err := s.Transfer(ctx, address, chain.EtherToWei(int64(s.cfg.payout)))
-		s.mutex.Unlock()
+		txHash, err := s.claim(ctx, &newReq)
+		// s.mutex.Unlock()
 		if err != nil {
-			log.WithError(err).Error("Failed to send transaction")
+			log.WithFields(log.Fields{
+				"addr": address,
+				"ip":   ip,
+			}).WithError(err).Error("Failed to send transaction")
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -116,8 +212,72 @@ func (s *Server) handleClaim() http.HandlerFunc {
 			"txHash":  txHash,
 			"address": address,
 		}).Info("Funded directly successfully")
-		fmt.Fprintf(w, "Txhash: %s", txHash)
+
+		json.NewEncoder(w).Encode(struct {
+			TxHash string `json:"tx_hash"`
+		}{
+			TxHash: txHash.String(),
+		})
 	}
+}
+
+func (s *Server) verifyReCaptcha(ctx context.Context, reCaptchaToken string) (errMsg string, httpStatusCode int) {
+	const (
+		verifyCaptchaGoogleAPI = "https://www.google.com/recaptcha/api/siteverify"
+		systemErrMsg           = "System error, please try again later"
+	)
+	captchaPayloadRequest := url.Values{}
+	captchaPayloadRequest.Set("secret", s.cfg.reCaptchaSecret)
+	captchaPayloadRequest.Set("response", reCaptchaToken)
+
+	verifyCaptchaRequest, err := http.NewRequest(http.MethodPost, verifyCaptchaGoogleAPI, strings.NewReader(captchaPayloadRequest.Encode()))
+	if err != nil {
+		log.WithError(err).Error("Init requeset verify captcha failed")
+		return systemErrMsg, http.StatusServiceUnavailable
+	}
+	verifyCaptchaRequest.Header.Add("content-type", "application/x-www-form-urlencoded")
+	verifyCaptchaRequest.Header.Add("cache-control", "no-cache")
+
+	verifyCaptchaResponse, err := http.DefaultClient.Do(verifyCaptchaRequest)
+	if err != nil {
+		log.WithError(err).Error("Failed to verify reCaptcha token")
+		return systemErrMsg, http.StatusServiceUnavailable
+	}
+
+	captchaVerifyResponse := struct {
+		Success  bool   `json:"success"`
+		HostName string `json:"hostname"`
+	}{}
+	if err = json.NewDecoder(verifyCaptchaResponse.Body).Decode(&captchaVerifyResponse); err != nil {
+		log.WithError(err).Error("Failed to decode reCaptcha response")
+		return systemErrMsg, http.StatusServiceUnavailable
+	}
+	defer verifyCaptchaResponse.Body.Close()
+
+	log.WithField("reCaptcha_response", captchaVerifyResponse).Info("verify reCaptcha response")
+	if !captchaVerifyResponse.Success {
+		return "Invalid reCAPTCHA. Please try again.", http.StatusBadRequest
+	}
+
+	return "", 0
+}
+
+func (s *Server) claim(ctx context.Context, requester *Requester) (common.Hash, error) {
+	txHash, err := s.Transfer(context.Background(), requester.Addr, chain.EtherToWei(int64(s.cfg.payout)))
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	requester.CreatedAt = time.Now()
+	if err := s.storage.CreateRequester(context.Background(), requester); err != nil {
+		log.WithFields(log.Fields{
+			"txHash":  txHash,
+			"address": requester.Addr,
+			"ip":      requester.IP,
+		}).WithError(err).Error("Cannot store requester")
+	}
+
+	return txHash, nil
 }
 
 func (s *Server) handleInfo() http.HandlerFunc {
