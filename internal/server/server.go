@@ -17,7 +17,6 @@ import (
 	"github.com/urfave/negroni"
 
 	"github.com/Shib-Chain/shibc-faucet/internal/chain"
-	"github.com/Shib-Chain/shibc-faucet/web"
 )
 
 const (
@@ -44,7 +43,7 @@ func NewServer(builder chain.TxBuilder, cfg *Config) *Server {
 
 func (s *Server) setupRouter() *http.ServeMux {
 	router := http.NewServeMux()
-	router.Handle("/", http.FileServer(web.Dist()))
+	// router.Handle("/", http.FileServer(web.Dist()))
 	limiter := NewLimiter(s.cfg.proxyCount, time.Duration(s.cfg.interval)*time.Minute)
 	router.Handle("/api/claim", negroni.New(limiter, negroni.Wrap(s.handleClaim())))
 	router.Handle("/api/info", s.handleInfo())
