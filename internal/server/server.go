@@ -130,18 +130,18 @@ func (s *Server) handleClaim() http.HandlerFunc {
 		}
 
 		address := r.PostFormValue(AddressKey)
-		inputIP := r.PostFormValue(IPKey)
+		// inputIP := r.PostFormValue(IPKey)
 		ip := fmt.Sprint(r.Context().Value(IPCtxKey))
-		if inputIP != "" && ip != "::1" && inputIP != ip {
-			log.WithFields(log.Fields{
-				"addr":     address,
-				"ip":       ip,
-				"input_ip": inputIP,
-			}).Error("Detect different between request's IP and payload's IP")
-			errMsg := "System error, please try again later"
-			http.Error(w, errMsg, http.StatusServiceUnavailable)
-			return
-		}
+		// if inputIP != "" && ip != "::1" && inputIP != ip {
+		// 	log.WithFields(log.Fields{
+		// 		"addr":     address,
+		// 		"ip":       ip,
+		// 		"input_ip": inputIP,
+		// 	}).Error("Detect different between request's IP and payload's IP")
+		// 	errMsg := "System error, please try again later"
+		// 	http.Error(w, errMsg, http.StatusServiceUnavailable)
+		// 	return
+		// }
 
 		if s.cfg.reCaptchaSecret != "" {
 			reCaptchaToken := r.PostFormValue(ReCaptchaToken)
