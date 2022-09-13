@@ -19,7 +19,7 @@ import (
 
 var (
 	appVersion = "v1.1.0"
-	chainIDMap = map[string]int{"ropsten": 3, "rinkeby": 4, "goerli": 5, "kovan": 42, "shibc": 21852}
+	chainIDMap = map[string]int{"ropsten": 3, "rinkeby": 4, "goerli": 5, "kovan": 42, "shibc-testnet": 21852, "shibc": 1923}
 
 	httpPortFlag        = flag.Int("httpport", 8080, "Listener port to serve HTTP connection")
 	proxyCntFlag        = flag.Int("proxycount", 1, "Count of reverse proxies in front of the server")
@@ -30,7 +30,7 @@ var (
 
 	payoutFlag   = flag.Float64("faucet.amount", 0.005, "Number of WSHIBs to transfer per user request")
 	intervalFlag = flag.Int("faucet.minutes", 1440, "Number of minutes to wait between funding rounds")
-	netnameFlag  = flag.String("faucet.name", "testnet", "Network name to display on the frontend")
+	netnameFlag  = flag.String("faucet.name", "shibc-testnet", "Network name to display on the frontend")
 	dbFlag       = flag.String("faucet.db", "", "Database connection string")
 
 	keyJSONFlag  = flag.String("wallet.keyjson", os.Getenv("KEYSTORE"), "Keystore file to fund user requests with")
